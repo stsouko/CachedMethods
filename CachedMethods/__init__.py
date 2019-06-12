@@ -29,12 +29,12 @@ class cached_property:
     def __init__(self, func):
         self.__doc__ = getattr(func, "__doc__")
         self.func = func
+        self.name = func.__name__
 
     def __get__(self, obj, cls):
         if obj is None:
             return self
-
-        value = obj.__dict__[self.func.__name__] = self.func(obj)
+        value = obj.__dict__[self.name] = self.func(obj)
         return value
 
 
@@ -76,4 +76,43 @@ def cached_args_method(func):
     return wrapper
 
 
-__all__ = ['cached_property', 'cached_method', 'cached_args_method']
+class class_cached_property:
+    """
+    cache property result in class level. usable for dynamic class attrs calculation.
+
+    required __class_cache__ dict attr:
+
+    class X:
+        __class_cache__ = {}
+
+        @class_cached_property
+        def my_attr(self):
+            return sth
+    """
+    def __init__(self, func):
+        self.__doc__ = getattr(func, '__doc__')
+        self.func = func
+        self.name = func.__name__
+
+    def __get__(self, obj, cls):
+        if obj is None:
+            return self
+        try:
+            class_cache = cls.__class_cache__[cls]  # for subclasses isolation
+        except KeyError:
+            value = self.func(obj)
+            cls.__class_cache__[cls] = {self.name: value}
+        else:
+            try:
+                value = class_cache[self.name]
+            except KeyError:  # another property or cleaned cache
+                value = class_cache[self.name] = self.func(obj)
+
+        try:  # cache in object if possible
+            obj.__dict__[self.name] = value
+        except AttributeError:
+            pass
+        return value
+
+
+__all__ = ['cached_property', 'cached_method', 'cached_args_method', 'class_cached_property']
