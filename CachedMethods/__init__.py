@@ -29,7 +29,10 @@ class cached_property:
     def __init__(self, func):
         self.__doc__ = getattr(func, "__doc__")
         self.func = func
-        self.name = func.__name__
+        name = func.__name__
+        if name.startswith('__') and not name.endswith('__'):
+            name = f'_{func.__qualname__.split(".")[-2]}{name}'
+        self.name = name
 
     def __get__(self, obj, cls):
         if obj is None:
@@ -42,7 +45,7 @@ def cached_method(func):
     """
     cache methods without arguments
     """
-    name = f'_cached_method_{func.__name__}'
+    name = f'__cached_method_{func.__name__}'
 
     @wraps(func)
     def wrapper(self):
@@ -58,7 +61,7 @@ def cached_args_method(func):
     """
     cache methods results with hashable args
     """
-    name = f'_cached_args_method_{func.__name__}'
+    name = f'__cached_args_method_{func.__name__}'
 
     @wraps(func)
     def wrapper(self, *args):
@@ -92,7 +95,10 @@ class class_cached_property:
     def __init__(self, func):
         self.__doc__ = getattr(func, '__doc__')
         self.func = func
-        self.name = func.__name__
+        name = func.__name__
+        if name.startswith('__') and not name.endswith('__'):
+            name = f'_{func.__qualname__.split(".")[-2]}{name}'
+        self.name = name
 
     def __get__(self, obj, cls):
         if obj is None:
