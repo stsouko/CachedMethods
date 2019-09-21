@@ -16,7 +16,30 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
+from collections.abc import Mapping
 from functools import wraps
+
+
+class FrozenDict(Mapping):
+    """
+    unmutable dict
+    """
+    __slots__ = '__d'
+
+    def __init__(self, *args, **kwargs):
+        self.__d = dict(*args, **kwargs)
+
+    def __iter__(self):
+        return iter(self.__d)
+
+    def __len__(self):
+        return len(self.__d)
+
+    def __getitem__(self, key):
+        return self.__d[key]
+
+    def __repr__(self):
+        return repr(self.__d)
 
 
 class cached_property:
@@ -37,7 +60,14 @@ class cached_property:
     def __get__(self, obj, cls):
         if obj is None:
             return self
-        value = obj.__dict__[self.name] = self.func(obj)
+        value = self.func(obj)
+        if isinstance(value, list):
+            value = tuple(value)
+        elif isinstance(value, set):
+            value = frozenset(value)
+        elif isinstance(value, dict):
+            value = FrozenDict(value)
+        obj.__dict__[self.name] = value
         return value
 
 
@@ -52,7 +82,14 @@ def cached_method(func):
         try:
             return self.__dict__[name]
         except KeyError:
-            value = self.__dict__[name] = func(self)
+            value = func(self)
+            if isinstance(value, list):
+                value = tuple(value)
+            elif isinstance(value, set):
+                value = frozenset(value)
+            elif isinstance(value, dict):
+                value = FrozenDict(value)
+            self.__dict__[name] = value
             return value
     return wrapper
 
@@ -69,12 +106,25 @@ def cached_args_method(func):
             cache = self.__dict__[name]
         except KeyError:
             value = func(self, *args)
+            if isinstance(value, list):
+                value = tuple(value)
+            elif isinstance(value, set):
+                value = frozenset(value)
+            elif isinstance(value, dict):
+                value = FrozenDict(value)
             self.__dict__[name] = {args: value}
             return value
         try:
             return cache[args]
         except KeyError:
-            value = cache[args] = func(self, *args)
+            value = func(self, *args)
+            if isinstance(value, list):
+                value = tuple(value)
+            elif isinstance(value, set):
+                value = frozenset(value)
+            elif isinstance(value, dict):
+                value = FrozenDict(value)
+            cache[args] = value
             return value
     return wrapper
 
@@ -107,12 +157,25 @@ class class_cached_property:
             class_cache = cls.__class_cache__[cls]  # for subclasses isolation
         except KeyError:
             value = self.func(obj)
+            if isinstance(value, list):
+                value = tuple(value)
+            elif isinstance(value, set):
+                value = frozenset(value)
+            elif isinstance(value, dict):
+                value = FrozenDict(value)
             cls.__class_cache__[cls] = {self.name: value}
         else:
             try:
                 value = class_cache[self.name]
             except KeyError:  # another property or cleaned cache
-                value = class_cache[self.name] = self.func(obj)
+                value = self.func(obj)
+                if isinstance(value, list):
+                    value = tuple(value)
+                elif isinstance(value, set):
+                    value = frozenset(value)
+                elif isinstance(value, dict):
+                    value = FrozenDict(value)
+                class_cache[self.name] = value
 
         try:  # cache in object if possible
             obj.__dict__[self.name] = value
@@ -121,4 +184,4 @@ class class_cached_property:
         return value
 
 
-__all__ = ['cached_property', 'cached_method', 'cached_args_method', 'class_cached_property']
+__all__ = ['cached_property', 'cached_method', 'cached_args_method', 'class_cached_property', 'FrozenDict']

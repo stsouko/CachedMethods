@@ -20,7 +20,7 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 
-version = '0.1.2'
+version = '0.1.3'
 
 
 setup(
