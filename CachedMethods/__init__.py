@@ -41,6 +41,10 @@ class FrozenDict(Mapping):
     def __repr__(self):
         return repr(self.__d)
 
+    def copy(self):
+        """mutable copy of dict"""
+        return self.__d.copy()
+
 
 class cached_property:
     """
