@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2019 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2019-2026 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CachedMethods.
 #
 #  CachedMethods is free software; you can redistribute it and/or modify
@@ -18,6 +18,20 @@
 #
 from collections.abc import Mapping
 from functools import wraps
+from threading import Lock
+
+
+_SENTINEL = object()
+
+
+def _freeze(value):
+    if isinstance(value, list):
+        return tuple(value)
+    elif isinstance(value, set):
+        return frozenset(value)
+    elif isinstance(value, dict):
+        return FrozenDict(value)
+    return value
 
 
 class FrozenDict(Mapping):
@@ -50,12 +64,13 @@ class cached_property:
     """
     A property that is only computed once per instance and then replaces itself
     with an ordinary attribute. Deleting the attribute resets the property.
-    Source: https://github.com/bottlepy/bottle/commit/fa7733e075da0d790d809aa3d2f53071897e6f76
+    Thread-safe for Python 3.14+ free-threaded (no-GIL) builds.
     """
 
     def __init__(self, func):
         self.__doc__ = getattr(func, "__doc__")
         self.func = func
+        self.lock = Lock()
         name = func.__name__
         if name.startswith('__') and not name.endswith('__'):
             name = f'_{func.__qualname__.split(".")[-2]}{name}'
@@ -64,35 +79,42 @@ class cached_property:
     def __get__(self, obj, cls):
         if obj is None:
             return self
-        value = self.func(obj)
-        if isinstance(value, list):
-            value = tuple(value)
-        elif isinstance(value, set):
-            value = frozenset(value)
-        elif isinstance(value, dict):
-            value = FrozenDict(value)
-        obj.__dict__[self.name] = value
-        return value
+        # Fast path: check without lock
+        value = obj.__dict__.get(self.name, _SENTINEL)
+        if value is not _SENTINEL:
+            return value
+        with self.lock:
+            # Double-check after acquiring lock
+            value = obj.__dict__.get(self.name, _SENTINEL)
+            if value is not _SENTINEL:
+                return value
+            value = _freeze(self.func(obj))
+            obj.__dict__[self.name] = value
+            return value
 
 
 def cached_method(func):
     """
-    cache methods without arguments
+    cache methods without arguments.
+    Thread-safe for Python 3.14+ free-threaded (no-GIL) builds.
     """
     name = f'__cached_method_{func.__name__}'
+    lock_name = f'__cached_method_lock_{func.__name__}'
 
     @wraps(func)
     def wrapper(self):
-        try:
-            return self.__dict__[name]
-        except KeyError:
-            value = func(self)
-            if isinstance(value, list):
-                value = tuple(value)
-            elif isinstance(value, set):
-                value = frozenset(value)
-            elif isinstance(value, dict):
-                value = FrozenDict(value)
+        # Fast path: check without lock
+        value = self.__dict__.get(name, _SENTINEL)
+        if value is not _SENTINEL:
+            return value
+        # Get or create per-instance lock
+        lock = self.__dict__.setdefault(lock_name, Lock())
+        with lock:
+            # Double-check after acquiring lock
+            value = self.__dict__.get(name, _SENTINEL)
+            if value is not _SENTINEL:
+                return value
+            value = _freeze(func(self))
             self.__dict__[name] = value
             return value
     return wrapper
@@ -100,34 +122,33 @@ def cached_method(func):
 
 def cached_args_method(func):
     """
-    cache methods results with hashable args
+    cache methods results with hashable args.
+    Thread-safe for Python 3.14+ free-threaded (no-GIL) builds.
     """
     name = f'__cached_args_method_{func.__name__}'
+    lock_name = f'__cached_args_method_lock_{func.__name__}'
 
     @wraps(func)
     def wrapper(self, *args):
-        try:
-            cache = self.__dict__[name]
-        except KeyError:
-            value = func(self, *args)
-            if isinstance(value, list):
-                value = tuple(value)
-            elif isinstance(value, set):
-                value = frozenset(value)
-            elif isinstance(value, dict):
-                value = FrozenDict(value)
-            self.__dict__[name] = {args: value}
-            return value
-        try:
-            return cache[args]
-        except KeyError:
-            value = func(self, *args)
-            if isinstance(value, list):
-                value = tuple(value)
-            elif isinstance(value, set):
-                value = frozenset(value)
-            elif isinstance(value, dict):
-                value = FrozenDict(value)
+        # Fast path: check without lock
+        cache = self.__dict__.get(name)
+        if cache is not None:
+            value = cache.get(args, _SENTINEL)
+            if value is not _SENTINEL:
+                return value
+        # Get or create per-instance lock
+        lock = self.__dict__.setdefault(lock_name, Lock())
+        with lock:
+            # Double-check after acquiring lock
+            cache = self.__dict__.get(name)
+            if cache is not None:
+                value = cache.get(args, _SENTINEL)
+                if value is not _SENTINEL:
+                    return value
+            else:
+                cache = {}
+                self.__dict__[name] = cache
+            value = _freeze(func(self, *args))
             cache[args] = value
             return value
     return wrapper
@@ -136,6 +157,7 @@ def cached_args_method(func):
 class class_cached_property:
     """
     cache property result in class level. usable for dynamic class attrs calculation.
+    Thread-safe for Python 3.14+ free-threaded (no-GIL) builds.
 
     required __class_cache__ dict attr:
 
@@ -149,6 +171,7 @@ class class_cached_property:
     def __init__(self, func):
         self.__doc__ = getattr(func, '__doc__')
         self.func = func
+        self.lock = Lock()
         name = func.__name__
         if name.startswith('__') and not name.endswith('__'):
             name = f'_{func.__qualname__.split(".")[-2]}{name}'
@@ -157,31 +180,39 @@ class class_cached_property:
     def __get__(self, obj, cls):
         if obj is None:
             return self
-        try:
-            class_cache = cls.__class_cache__[cls]  # for subclasses isolation
-        except KeyError:
-            value = self.func(obj)
-            if isinstance(value, list):
-                value = tuple(value)
-            elif isinstance(value, set):
-                value = frozenset(value)
-            elif isinstance(value, dict):
-                value = FrozenDict(value)
-            cls.__class_cache__[cls] = {self.name: value}
-        else:
-            try:
-                value = class_cache[self.name]
-            except KeyError:  # another property or cleaned cache
-                value = self.func(obj)
-                if isinstance(value, list):
-                    value = tuple(value)
-                elif isinstance(value, set):
-                    value = frozenset(value)
-                elif isinstance(value, dict):
-                    value = FrozenDict(value)
-                class_cache[self.name] = value
+        # Fast path: check instance dict
+        value = obj.__dict__.get(self.name, _SENTINEL)
+        if value is not _SENTINEL:
+            return value
+        # Check class cache without lock
+        class_cache = cls.__class_cache__.get(cls)
+        if class_cache is not None:
+            value = class_cache.get(self.name, _SENTINEL)
+            if value is not _SENTINEL:
+                try:
+                    obj.__dict__[self.name] = value
+                except AttributeError:
+                    pass
+                return value
+        with self.lock:
+            # Double-check class cache after acquiring lock
+            class_cache = cls.__class_cache__.get(cls)
+            if class_cache is not None:
+                value = class_cache.get(self.name, _SENTINEL)
+                if value is not _SENTINEL:
+                    try:
+                        obj.__dict__[self.name] = value
+                    except AttributeError:
+                        pass
+                    return value
+            else:
+                class_cache = {}
+                cls.__class_cache__[cls] = class_cache
 
-        try:  # cache in object if possible
+            value = _freeze(self.func(obj))
+            class_cache[self.name] = value
+
+        try:
             obj.__dict__[self.name] = value
         except AttributeError:
             pass

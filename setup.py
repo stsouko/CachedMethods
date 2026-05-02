@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2019 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2019-2026 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CachedMethods.
 #
 #  CachedMethods is free software; you can redistribute it and/or modify
@@ -20,7 +20,7 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 
-version = '0.1.4'
+version = '0.2.0'
 
 
 setup(
@@ -31,7 +31,7 @@ setup(
     license='LGPLv3',
     author='Dr. Ramil Nugmanov',
     author_email='stsouko@live.ru',
-    python_requires='>=3.6.0',
+    python_requires='>=3.10.0',
     long_description=(Path(__file__).parent / 'README.md').open().read(),
     classifiers=['Environment :: Plugins',
                  'Intended Audience :: Developers',
@@ -40,6 +40,10 @@ setup(
                  'Operating System :: OS Independent',
                  'Programming Language :: Python',
                  'Programming Language :: Python :: 3',
-                 'Programming Language :: Python :: 3.6',
+                 'Programming Language :: Python :: 3.10',
+                 'Programming Language :: Python :: 3.11',
+                 'Programming Language :: Python :: 3.12',
+                 'Programming Language :: Python :: 3.13',
+                 'Programming Language :: Python :: 3.14'
                  ]
 )
