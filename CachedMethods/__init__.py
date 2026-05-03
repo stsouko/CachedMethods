@@ -180,19 +180,19 @@ class class_cached_property:
     def __get__(self, obj, cls):
         if obj is None:
             return self
-        # Fast path: check instance dict
-        value = obj.__dict__.get(self.name, _SENTINEL)
-        if value is not _SENTINEL:
-            return value
+        # Fast path: check instance dict (skipped for slotted classes)
+        obj_dict = getattr(obj, '__dict__', None)
+        if obj_dict is not None:
+            value = obj_dict.get(self.name, _SENTINEL)
+            if value is not _SENTINEL:
+                return value
         # Check class cache without lock
         class_cache = cls.__class_cache__.get(cls)
         if class_cache is not None:
             value = class_cache.get(self.name, _SENTINEL)
             if value is not _SENTINEL:
-                try:
-                    obj.__dict__[self.name] = value
-                except AttributeError:
-                    pass
+                if obj_dict is not None:
+                    obj_dict[self.name] = value
                 return value
         with self.lock:
             # Double-check class cache after acquiring lock
@@ -200,10 +200,8 @@ class class_cached_property:
             if class_cache is not None:
                 value = class_cache.get(self.name, _SENTINEL)
                 if value is not _SENTINEL:
-                    try:
-                        obj.__dict__[self.name] = value
-                    except AttributeError:
-                        pass
+                    if obj_dict is not None:
+                        obj_dict[self.name] = value
                     return value
             else:
                 class_cache = {}
@@ -211,12 +209,9 @@ class class_cached_property:
 
             value = _freeze(self.func(obj))
             class_cache[self.name] = value
-
-        try:
-            obj.__dict__[self.name] = value
-        except AttributeError:
-            pass
-        return value
+            if obj_dict is not None:
+                obj_dict[self.name] = value
+            return value
 
 
 __all__ = ['cached_property', 'cached_method', 'cached_args_method', 'class_cached_property', 'FrozenDict']
